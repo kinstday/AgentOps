@@ -1,0 +1,205 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #050810;
+  --panel: #0c1220;
+  --panel-2: #111a2b;
+  --line: #1a2540;
+  --line-soft: #141d33;
+  --ink: #d7e2f2;
+  --ink-dim: #8fa1c2;
+  --ink-mute: #56678c;
+  --cyan: #22d3ee;
+  --mint: #34d399;
+  --amber: #fbbf24;
+  --red: #f87171;
+  --magenta: #e879f9;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'JetBrains Mono', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', monospace, sans-serif;
+  font-size: 14px;
+}
+
+/* ambient background depth + scanline texture */
+.app-shell {
+  min-height: 100dvh;
+  background:
+    radial-gradient(1200px 600px at 85% -10%, rgba(34, 211, 238, 0.06), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, rgba(232, 121, 249, 0.04), transparent 60%),
+    var(--bg);
+  position: relative;
+}
+.app-shell::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(255, 255, 255, 0.014) 0px,
+    rgba(255, 255, 255, 0.014) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+}
+.app-shell > * {
+  position: relative;
+  z-index: 2;
+}
+
+.panel {
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.panel-title {
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  font-weight: 600;
+}
+
+/* status LEDs */
+.led {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex: none;
+  position: relative;
+}
+.led::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  opacity: 0;
+}
+.led-pulse::after {
+  animation: led-ring 1.6s ease-in-out infinite;
+}
+@keyframes led-ring {
+  0% { transform: scale(0.6); opacity: 0.9; }
+  70% { transform: scale(1.5); opacity: 0; }
+  100% { transform: scale(1.5); opacity: 0; }
+}
+
+/* radar logo */
+.radar {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid rgba(34, 211, 238, 0.5);
+  overflow: hidden;
+  flex: none;
+  background:
+    radial-gradient(circle at center, rgba(34, 211, 238, 0.12), transparent 70%),
+    var(--panel);
+}
+.radar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: conic-gradient(from 0deg, rgba(34, 211, 238, 0.7), transparent 22%);
+  animation: radar-sweep 4.2s linear infinite;
+}
+.radar::after {
+  content: '';
+  position: absolute;
+  inset: 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(34, 211, 238, 0.35);
+}
+@keyframes radar-sweep {
+  to { transform: rotate(360deg); }
+}
+
+/* ticker */
+.ticker-track {
+  display: flex;
+  gap: 48px;
+  white-space: nowrap;
+  animation: ticker 48s linear infinite;
+  width: max-content;
+}
+.ticker-track:hover {
+  animation-play-state: paused;
+}
+@keyframes ticker {
+  to { transform: translateX(-50%); }
+}
+
+/* DAG flow lines */
+.flow-line {
+  stroke-dasharray: 6 6;
+  animation: flow-dash 1.4s linear infinite;
+}
+.flow-line-slow {
+  stroke-dasharray: 4 8;
+  animation: flow-dash 3s linear infinite;
+}
+@keyframes flow-dash {
+  to { stroke-dashoffset: -24; }
+}
+
+/* thin themed scrollbar */
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 3px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #26344f;
+}
+
+/* quota bar */
+.qbar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--line-soft);
+  overflow: hidden;
+  position: relative;
+}
+.qbar > div {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.6s ease;
+}
+
+/* focus visibility */
+button:focus-visible,
+[role='button']:focus-visible,
+a:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--cyan);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .radar::before,
+  .ticker-track,
+  .flow-line,
+  .flow-line-slow,
+  .led-pulse::after {
+    animation: none !important;
+  }
+  .qbar > div {
+    transition: none;
+  }
+}

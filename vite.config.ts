@@ -8,7 +8,15 @@ export default defineConfig({
   base: './',
   plugins: [inspectAttr(), react()],
   server: {
-    port: 3000,
+    host: '127.0.0.1',
+    port: 4712,
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:4711',
+        changeOrigin: true,
+        ws: true,
+      },
+    },
   },
   resolve: {
     alias: {

@@ -1,21 +1,21 @@
-import { useEffect, useState } from 'react'
-import { STATUS_META, type Agent } from '../data/mock'
+import { useAppState } from '../store/appStore'
+import { STATUS_META, useNow } from '../lib/status'
 
-function useClock() {
-  const [now, setNow] = useState(new Date())
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000)
-    return () => clearInterval(t)
-  }, [])
-  return now
-}
+const MODE_META = {
+  live: { label: 'LIVE', color: 'var(--cyan)', border: 'rgba(34,211,238,0.4)' },
+  demo: { label: 'DEMO', color: 'var(--amber)', border: 'rgba(251,191,36,0.45)' },
+  connecting: { label: '连接中', color: 'var(--ink-mute)', border: 'var(--line)' },
+} as const
 
-export default function Header({ agents }: { agents: Agent[] }) {
-  const now = useClock()
+export default function Header() {
+  const { agents, mode } = useAppState()
+  const now = useNow(1000)
   const running = agents.filter((a) => a.status === 'running').length
   const blocked = agents.filter((a) => a.status === 'blocked' || a.status === 'error').length
   const waiting = agents.filter((a) => a.status === 'waiting').length
+  const m = MODE_META[mode]
 
+  const d = new Date(now)
   const pad = (n: number) => String(n).padStart(2, '0')
 
   return (
@@ -29,9 +29,16 @@ export default function Header({ agents }: { agents: Agent[] }) {
           </div>
         </div>
 
-        <span className="ml-2 inline-flex items-center gap-2 rounded-full border border-[rgba(34,211,238,0.4)] px-3 py-1 text-[11px] tracking-[0.14em] text-[var(--cyan)]">
-          <span className="led led-pulse" style={{ background: 'var(--cyan)', color: 'var(--cyan)' }} />
-          LIVE
+        <span
+          className="ml-2 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] tracking-[0.14em]"
+          style={{ color: m.color, borderColor: m.border }}
+          title={mode === 'demo' ? '后端不可达，当前为演示模式（mock 数据）' : undefined}
+        >
+          <span
+            className={`led ${mode === 'connecting' ? '' : 'led-pulse'}`}
+            style={{ background: m.color, color: m.color }}
+          />
+          {m.label}
         </span>
 
         <div className="hidden lg:flex items-center gap-5 ml-6 text-[11px] tracking-[0.1em]">
@@ -52,9 +59,9 @@ export default function Header({ agents }: { agents: Agent[] }) {
         <div className="ml-auto flex items-center gap-4">
           <div className="text-right leading-tight hidden sm:block">
             <div className="text-[15px] font-semibold tabular-nums text-[var(--ink)]">
-              {pad(now.getHours())}:{pad(now.getMinutes())}:{pad(now.getSeconds())}
+              {pad(d.getHours())}:{pad(d.getMinutes())}:{pad(d.getSeconds())}
             </div>
-            <div className="text-[10px] tracking-[0.18em] text-[var(--ink-mute)] uppercase">本地时间 UTC+8</div>
+            <div className="text-[10px] tracking-[0.18em] text-[var(--ink-mute)] uppercase">本地时间</div>
           </div>
           <div className="w-px h-8 bg-[var(--line)]" />
           <div className="leading-tight">

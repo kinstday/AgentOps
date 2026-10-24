@@ -1,5 +1,7 @@
 import { useState } from 'react'
-import { STATUS_META, type Agent, type AgentStatus } from '../data/mock'
+import { useAppState, agentAction, openCommander } from '../store/appStore'
+import { STATUS_META, elapsedSec, fmtDuration, fmtTokens, useNow } from '../lib/status'
+import type { AgentStatus } from '../types/events'
 
 const FILTERS: { key: AgentStatus | 'all'; label: string }[] = [
   { key: 'all', label: '全部' },
@@ -10,19 +12,28 @@ const FILTERS: { key: AgentStatus | 'all'; label: string }[] = [
   { key: 'done', label: '已完成' },
 ]
 
-function fmtTokens(n: number) {
-  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n)
-}
+const BTN =
+  'cursor-pointer rounded border px-2 py-0.5 text-[10px] tracking-[0.1em] transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40'
 
-interface Props {
-  agents: Agent[]
-  onTogglePause: (id: string) => void
-  onApprove: (id: string, ok: boolean) => void
-}
-
-export default function AgentFleet({ agents, onTogglePause, onApprove }: Props) {
+/** FR-1 Agent 舰队：状态 + 已运行时长（实时走动）+ token/成本；M1 不展示进度条。 */
+export default function AgentFleet() {
+  const { agents, accounts, mode } = useAppState()
+  const now = useNow(1000)
   const [filter, setFilter] = useState<AgentStatus | 'all'>('all')
+  const [notices, setNotices] = useState<Record<string, string>>({})
+
   const list = filter === 'all' ? agents : agents.filter((a) => a.status === filter)
+  const accountName = (id: string | null) => accounts.find((x) => x.id === id)?.name ?? id ?? '—'
+
+  const act = async (id: string, action: 'pause' | 'resume' | 'approve' | 'reject') => {
+    const err = await agentAction(id, action)
+    setNotices((prev) => {
+      const next = { ...prev }
+      if (err) next[id] = err
+      else delete next[id]
+      return next
+    })
+  }
 
   return (
     <section className="panel p-4" aria-label="Agent 舰队">
@@ -54,6 +65,9 @@ export default function AgentFleet({ agents, onTogglePause, onApprove }: Props) 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
         {list.map((a) => {
           const meta = STATUS_META[a.status]
+          const task = a.current_task ?? null
+          const elapsed = fmtDuration(elapsedSec(task?.started_at ?? a.created_at, now))
+          const notice = notices[a.id]
           return (
             <article
               key={a.id}
@@ -68,8 +82,13 @@ export default function AgentFleet({ agents, onTogglePause, onApprove }: Props) 
                 />
                 <div className="min-w-0">
                   <div className="text-[13px] font-semibold truncate">{a.name}</div>
-                  <div className="text-[10px] tracking-[0.16em] text-[var(--ink-mute)] uppercase">{a.role}</div>
+                  <div className="text-[10px] tracking-[0.16em] text-[var(--ink-mute)] uppercase">{a.role ?? '—'}</div>
                 </div>
+                {a.readonly && (
+                  <span className="rounded-sm px-1.5 py-0.5 text-[9px] tracking-[0.1em] text-[var(--ink-mute)] border border-[var(--line)]">
+                    只读
+                  </span>
+                )}
                 <span
                   className="ml-auto rounded-sm px-1.5 py-0.5 text-[9px] font-bold tracking-[0.12em]"
                   style={{ color: meta.color, border: `1px solid ${meta.color}` }}
@@ -80,61 +99,74 @@ export default function AgentFleet({ agents, onTogglePause, onApprove }: Props) 
 
               <div className="flex items-center gap-2 text-[11px]">
                 <span className="rounded bg-[var(--panel-2)] border border-[var(--line)] px-2 py-0.5 text-[var(--ink)]">
-                  {a.model}
+                  {a.model ?? '未知模型'}
                 </span>
-                <span className="text-[var(--ink-mute)]">{a.modelVendor}</span>
-                <span className="ml-auto text-[var(--ink-mute)]">账号 · {a.account}</span>
+                <span className="text-[var(--ink-mute)]">{a.vendor ?? ''}</span>
+                <span className="ml-auto text-[var(--ink-mute)] truncate">账号 · {accountName(a.account_id)}</span>
               </div>
 
               <p className="text-[12px] leading-relaxed text-[var(--ink-dim)] min-h-[36px]">
-                <span className="text-[var(--ink-mute)]">[{a.taskId}]</span> {a.task}
+                {task ? (
+                  <>
+                    <span className="text-[var(--ink-mute)]">[{task.id}]</span> {task.title ?? '未命名任务'}
+                  </>
+                ) : (
+                  <span className="text-[var(--ink-mute)]">当前无任务</span>
+                )}
               </p>
+              {a.status === 'blocked' && a.blocked_reason && (
+                <p className="text-[11px] text-[var(--red)] -mt-2">阻塞原因：{a.blocked_reason}</p>
+              )}
 
-              <div>
-                <div className="flex justify-between text-[10px] text-[var(--ink-mute)] mb-1.5 tracking-[0.1em]">
-                  <span>进度 {a.progress}%</span>
-                  <span>已运行 {a.startedAgo}</span>
-                </div>
-                <div className="qbar">
-                  <div
-                    style={{
-                      width: `${a.progress}%`,
-                      background: meta.color,
-                      boxShadow: `0 0 8px ${meta.color}66`,
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between text-[11px] text-[var(--ink-dim)] border-t border-[var(--line-soft)] pt-2.5">
-                <span className="tabular-nums">
+              <div className="flex items-center justify-between text-[10px] text-[var(--ink-mute)] tracking-[0.1em]">
+                <span>
+                  已运行 <span className="tabular-nums text-[var(--ink-dim)]">{elapsed}</span>
+                </span>
+                <span className="tabular-nums text-[var(--ink-dim)]">
                   {fmtTokens(a.tokens)} tok · ¥{a.cost.toFixed(2)}
                 </span>
-                <div className="flex gap-1.5">
-                  {a.status === 'waiting' ? (
-                    <>
-                      <button
-                        onClick={() => onApprove(a.id, true)}
-                        className="cursor-pointer rounded border border-[var(--mint)] text-[var(--mint)] px-2 py-0.5 text-[10px] tracking-[0.1em] hover:bg-[rgba(52,211,153,0.1)] transition-colors duration-150"
-                      >
-                        批准
-                      </button>
-                      <button
-                        onClick={() => onApprove(a.id, false)}
-                        className="cursor-pointer rounded border border-[var(--red)] text-[var(--red)] px-2 py-0.5 text-[10px] tracking-[0.1em] hover:bg-[rgba(248,113,113,0.1)] transition-colors duration-150"
-                      >
-                        拒绝
-                      </button>
-                    </>
-                  ) : a.status === 'done' || a.status === 'error' ? null : (
+              </div>
+
+              {notice && <p className="text-[10px] text-[var(--amber)]">{notice}</p>}
+
+              <div className="flex items-center justify-end gap-1.5 border-t border-[var(--line-soft)] pt-2.5">
+                {a.status === 'waiting' ? (
+                  <>
                     <button
-                      onClick={() => onTogglePause(a.id)}
-                      className="cursor-pointer rounded border border-[var(--line)] text-[var(--ink-dim)] px-2 py-0.5 text-[10px] tracking-[0.1em] hover:border-[var(--amber)] hover:text-[var(--amber)] transition-colors duration-150"
+                      onClick={() => void act(a.id, 'approve')}
+                      disabled={a.readonly && mode === 'live'}
+                      title={a.readonly ? '该来源只读' : undefined}
+                      className={`${BTN} border-[var(--mint)] text-[var(--mint)] hover:bg-[rgba(52,211,153,0.1)]`}
                     >
-                      {a.status === 'idle' ? '恢复' : '暂停'}
+                      批准
                     </button>
-                  )}
-                </div>
+                    <button
+                      onClick={() => void act(a.id, 'reject')}
+                      disabled={a.readonly && mode === 'live'}
+                      title={a.readonly ? '该来源只读' : undefined}
+                      className={`${BTN} border-[var(--red)] text-[var(--red)] hover:bg-[rgba(248,113,113,0.1)]`}
+                    >
+                      拒绝
+                    </button>
+                  </>
+                ) : a.status === 'done' || a.status === 'error' ? null : (
+                  <button
+                    onClick={() => void act(a.id, a.status === 'running' ? 'pause' : 'resume')}
+                    disabled={a.readonly}
+                    title={a.readonly ? '该来源只读，无控制通道' : undefined}
+                    className={`${BTN} border-[var(--line)] text-[var(--ink-dim)] hover:border-[var(--amber)] hover:text-[var(--amber)]`}
+                  >
+                    {a.status === 'running' ? '暂停' : '恢复'}
+                  </button>
+                )}
+                <button
+                  onClick={() => openCommander(a.id)}
+                  disabled={a.readonly}
+                  title={a.readonly ? '该 agent 只读，无法对话' : `与 ${a.name} 对话`}
+                  className={`${BTN} border-[var(--line)] text-[var(--ink-dim)] hover:border-[var(--cyan)] hover:text-[var(--cyan)]`}
+                >
+                  对话
+                </button>
               </div>
             </article>
           )

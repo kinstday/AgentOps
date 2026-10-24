@@ -1,182 +1,231 @@
-export type AgentStatus = 'running' | 'waiting' | 'blocked' | 'idle' | 'done' | 'error'
+import type {
+  AccountState,
+  AgentState,
+  Alert,
+  DispatchEdge,
+  FeedMessage,
+  TaskState,
+} from '../types/events'
+import { nowIsoLocal } from '../api/client'
 
-export interface Agent {
-  id: string
-  name: string
-  role: string
-  model: string
-  modelVendor: string
-  account: string
-  status: AgentStatus
-  task: string
-  taskId: string
-  progress: number
-  tokens: number
-  cost: number
-  startedAgo: string
+/**
+ * 演示模式专用数据源（§11 降级：无数据源接入时以 mock 数据运行并明确标注）。
+ * 口径按文档：三个账号来源 —— Kimi Code（窗口型）、ChatGPT/Codex（窗口型）、
+ * DeepSeek API（余额型）。
+ */
+
+function isoOffset(ms: number): string {
+  return nowIsoLocal(new Date(Date.now() + ms))
 }
 
-export const STATUS_META: Record<AgentStatus, { label: string; color: string; pulse: boolean }> = {
-  running: { label: '执行中', color: '#22d3ee', pulse: true },
-  waiting: { label: '待审批', color: '#fbbf24', pulse: true },
-  blocked: { label: '已阻塞', color: '#f87171', pulse: true },
-  idle: { label: '空闲', color: '#56678c', pulse: false },
-  done: { label: '已完成', color: '#34d399', pulse: false },
-  error: { label: '异常', color: '#f87171', pulse: false },
+function agoIso(ms: number): string {
+  return isoOffset(-ms)
 }
 
-export const INITIAL_AGENTS: Agent[] = [
-  {
-    id: 'orchestrator', name: 'orchestrator-01', role: '任务编排', model: 'Kimi K3',
-    modelVendor: 'Moonshot', account: 'Kimi Code', status: 'running',
-    task: '拆解「电商大促看板」需求并派发给子代理', taskId: 'T-2041',
-    progress: 62, tokens: 48210, cost: 0.86, startedAgo: '00:41:07',
-  },
-  {
-    id: 'frontend', name: 'coder-frontend', role: '前端开发', model: 'Claude Sonnet 4.5',
-    modelVendor: 'Anthropic', account: 'Claude Code', status: 'running',
-    task: '重构配额面板组件，接入 WebSocket 实时推送', taskId: 'T-2042',
-    progress: 45, tokens: 128450, cost: 3.42, startedAgo: '00:33:52',
-  },
-  {
-    id: 'backend', name: 'coder-backend', role: '后端开发', model: 'GPT-5.1 Codex',
-    modelVendor: 'OpenAI', account: 'Codex', status: 'waiting',
-    task: '执行数据库迁移脚本（高危操作，等待人工确认）', taskId: 'T-2043',
-    progress: 71, tokens: 96320, cost: 2.87, startedAgo: '00:27:18',
-  },
-  {
-    id: 'reviewer', name: 'reviewer-01', role: '代码审查', model: 'DeepSeek V3.2',
-    modelVendor: 'DeepSeek', account: 'DeepSeek API', status: 'running',
-    task: '审查 PR #142：配额预测算法边界条件', taskId: 'T-2044',
-    progress: 83, tokens: 34780, cost: 0.21, startedAgo: '00:18:44',
-  },
-  {
-    id: 'researcher', name: 'researcher-01', role: '调研分析', model: 'Gemini 3 Pro',
-    modelVendor: 'Google', account: 'Gemini API', status: 'blocked',
-    task: '抓取竞品定价页面（API 速率受限，排队重试）', taskId: 'T-2045',
-    progress: 12, tokens: 15230, cost: 0.44, startedAgo: '00:12:06',
-  },
-  {
-    id: 'docwriter', name: 'doc-writer', role: '文档撰写', model: 'Qwen3 Max',
-    modelVendor: 'Alibaba', account: '百炼 API', status: 'done',
-    task: '生成 v2.4 版本发布说明与变更日志', taskId: 'T-2039',
-    progress: 100, tokens: 58900, cost: 0.67, startedAgo: '01:05:39',
-  },
-]
-
-export interface Account {
-  id: string
-  name: string
-  plan: string
-  windowLabel: string
-  remaining: number // percent
-  resetInSec: number
-  weeklyRemaining?: number
-  burnPerHour: number // percent per hour at current rate
-  color: string
+export function demoTasks(): TaskState[] {
+  return [
+    {
+      id: 'T-2041', local_task_id: null, agent_id: 'orchestrator-01', from_agent: null,
+      title: '拆解「电商大促看板」需求并派发给子代理', progress: 0, tokens: 48210, cost: 0.86,
+      estimated: false, status: 'running', started_at: agoIso(41 * 60_000 + 7_000), ended_at: null,
+    },
+    {
+      id: 'T-2042', local_task_id: null, agent_id: 'coder-frontend', from_agent: 'orchestrator-01',
+      title: '重构配额面板组件，接入 WebSocket 实时推送', progress: 0, tokens: 128450, cost: 3.42,
+      estimated: false, status: 'running', started_at: agoIso(33 * 60_000 + 52_000), ended_at: null,
+    },
+    {
+      id: 'T-2043', local_task_id: null, agent_id: 'coder-backend', from_agent: 'orchestrator-01',
+      title: '执行数据库迁移脚本（高危操作，等待人工确认）', progress: 0, tokens: 96320, cost: 2.87,
+      estimated: false, status: 'running', started_at: agoIso(27 * 60_000 + 18_000), ended_at: null,
+    },
+    {
+      id: 'T-2044', local_task_id: null, agent_id: 'reviewer-01', from_agent: 'coder-frontend',
+      title: '审查 PR #142：配额预测算法边界条件', progress: 0, tokens: 34780, cost: 0.21,
+      estimated: false, status: 'running', started_at: agoIso(18 * 60_000 + 44_000), ended_at: null,
+    },
+    {
+      id: 'T-2045', local_task_id: null, agent_id: 'researcher-01', from_agent: 'orchestrator-01',
+      title: '抓取竞品定价页面（API 速率受限，排队重试）', progress: 0, tokens: 15230, cost: 0.44,
+      estimated: false, status: 'running', started_at: agoIso(12 * 60_000 + 6_000), ended_at: null,
+    },
+    {
+      id: 'T-2039', local_task_id: null, agent_id: 'doc-writer', from_agent: 'orchestrator-01',
+      title: '生成 v2.4 版本发布说明与变更日志', progress: 100, tokens: 58900, cost: 0.67,
+      estimated: false, status: 'done', started_at: agoIso(65 * 60_000 + 39_000), ended_at: agoIso(2 * 60_000),
+    },
+  ]
 }
 
-export const INITIAL_ACCOUNTS: Account[] = [
-  {
-    id: 'claude', name: 'Claude Code', plan: 'Pro · 主号', windowLabel: '5h 窗口',
-    remaining: 34, resetInSec: 2 * 3600 + 14 * 60 + 33, weeklyRemaining: 61, burnPerHour: 9.2, color: '#e879f9',
-  },
-  {
-    id: 'kimi', name: 'Kimi Code', plan: '会员 · 主号', windowLabel: '周配额',
-    remaining: 78, resetInSec: 3 * 86400 + 5 * 3600, burnPerHour: 1.8, color: '#22d3ee',
-  },
-  {
-    id: 'codex', name: 'Codex', plan: 'Plus · 备用号', windowLabel: '5h 窗口',
-    remaining: 12, resetInSec: 1 * 3600 + 2 * 60 + 48, weeklyRemaining: 23, burnPerHour: 14.6, color: '#34d399',
-  },
-  {
-    id: 'copilot', name: 'Copilot', plan: 'Pro · 团队号', windowLabel: '月配额',
-    remaining: 55, resetInSec: 9 * 86400 + 11 * 3600, burnPerHour: 0.9, color: '#fbbf24',
-  },
-]
-
-export interface DagNode {
-  id: string
-  label: string
-  sub: string
-  x: number
-  y: number
-  status: AgentStatus | 'source' | 'sink'
+export function demoAgents(tasks: TaskState[]): AgentState[] {
+  const taskOf = (id: string) => tasks.find((t) => t.id === id) ?? null
+  const base = {
+    blocked_since: null as string | null,
+    blocked_reason: null as string | null,
+    last_event_ts: agoIso(30_000),
+  }
+  const agents: AgentState[] = [
+    {
+      id: 'orchestrator-01', name: 'orchestrator-01', role: '任务编排', model: 'Kimi K3',
+      vendor: 'Moonshot', account_id: 'kimi', source: 'kimi-code', readonly: false,
+      status: 'running', current_task_id: 'T-2041', tokens: 48210, cost: 0.86,
+      created_at: agoIso(42 * 60_000), ...base,
+    },
+    {
+      id: 'coder-frontend', name: 'coder-frontend', role: '前端开发', model: 'Kimi K3',
+      vendor: 'Moonshot', account_id: 'kimi', source: 'kimi-code', readonly: false,
+      status: 'running', current_task_id: 'T-2042', tokens: 128450, cost: 3.42,
+      created_at: agoIso(40 * 60_000), ...base,
+    },
+    {
+      id: 'coder-backend', name: 'coder-backend', role: '后端开发', model: 'GPT-5.1 Codex',
+      vendor: 'OpenAI', account_id: 'codex', source: 'codex', readonly: false,
+      status: 'waiting', current_task_id: 'T-2043', tokens: 96320, cost: 2.87,
+      created_at: agoIso(35 * 60_000), ...base,
+    },
+    {
+      id: 'reviewer-01', name: 'reviewer-01', role: '代码审查', model: 'DeepSeek V3.2',
+      vendor: 'DeepSeek', account_id: 'deepseek', source: 'deepseek-otel', readonly: true,
+      status: 'running', current_task_id: 'T-2044', tokens: 34780, cost: 0.21,
+      created_at: agoIso(30 * 60_000), ...base,
+    },
+    {
+      id: 'researcher-01', name: 'researcher-01', role: '调研分析', model: 'GPT-5.1 Codex',
+      vendor: 'OpenAI', account_id: 'codex', source: 'codex', readonly: false,
+      status: 'blocked', current_task_id: 'T-2045', tokens: 15230, cost: 0.44,
+      created_at: agoIso(25 * 60_000),
+      blocked_since: agoIso(12 * 60_000), blocked_reason: 'DeepSeek 兼容网关返回 429，指数退避重试中',
+      last_event_ts: agoIso(60_000),
+    },
+    {
+      id: 'doc-writer', name: 'doc-writer', role: '文档撰写', model: 'Kimi K3',
+      vendor: 'Moonshot', account_id: 'kimi', source: 'kimi-code', readonly: false,
+      status: 'done', current_task_id: null, tokens: 58900, cost: 0.67,
+      created_at: agoIso(70 * 60_000), ...base,
+    },
+  ]
+  for (const a of agents) a.current_task = a.current_task_id ? taskOf(a.current_task_id) : null
+  return agents
 }
 
-export const DAG_NODES: DagNode[] = [
-  { id: 'user', label: '需求输入', sub: '白菜 · 手动触发', x: 60, y: 150, status: 'source' },
-  { id: 'orchestrator', label: 'orchestrator-01', sub: 'Kimi K3', x: 230, y: 150, status: 'running' },
-  { id: 'frontend', label: 'coder-frontend', sub: 'Claude Sonnet 4.5', x: 430, y: 60, status: 'running' },
-  { id: 'backend', label: 'coder-backend', sub: 'GPT-5.1 Codex', x: 430, y: 150, status: 'waiting' },
-  { id: 'researcher', label: 'researcher-01', sub: 'Gemini 3 Pro', x: 430, y: 240, status: 'blocked' },
-  { id: 'reviewer', label: 'reviewer-01', sub: 'DeepSeek V3.2', x: 630, y: 105, status: 'running' },
-  { id: 'deploy', label: '合并 · 发布', sub: '待全部通过', x: 800, y: 150, status: 'sink' },
-]
-
-export interface DagEdge {
-  from: string
-  to: string
-  active: boolean
+export function demoAccounts(): AccountState[] {
+  return [
+    {
+      id: 'kimi', name: 'Kimi Code · 会员 · 主号', plan: '会员', quota_kind: 'window', demo: true,
+      balance_cny: null, balance_detail: null, balance_rate_per_h: null,
+      windows: [
+        { label: '5h 窗口', remaining_pct: 62, resets_at: isoOffset(2.7 * 3_600_000), rate_per_h: -3.1 },
+        { label: '周限额', remaining_pct: 81, resets_at: null, rate_per_h: -1.2 },
+      ],
+      updated_at: agoIso(15_000),
+    },
+    {
+      id: 'codex', name: 'ChatGPT/Codex · Plus', plan: 'Plus', quota_kind: 'window', demo: true,
+      balance_cny: null, balance_detail: null, balance_rate_per_h: null,
+      windows: [
+        { label: '5h 窗口', remaining_pct: 12, resets_at: isoOffset(1.05 * 3_600_000), rate_per_h: -14.6 },
+        { label: '周限额', remaining_pct: 23, resets_at: null, rate_per_h: -2.4 },
+      ],
+      updated_at: agoIso(15_000),
+    },
+    {
+      id: 'deepseek', name: 'DeepSeek API', plan: '按量计费', quota_kind: 'balance', demo: true,
+      balance_cny: 58.3,
+      balance_detail: { total: 58.3, granted: 9.91, topped_up: 48.39 },
+      balance_rate_per_h: -0.42,
+      windows: [],
+      updated_at: agoIso(20_000),
+    },
+  ]
 }
 
-export const DAG_EDGES: DagEdge[] = [
-  { from: 'user', to: 'orchestrator', active: true },
-  { from: 'orchestrator', to: 'frontend', active: true },
-  { from: 'orchestrator', to: 'backend', active: true },
-  { from: 'orchestrator', to: 'researcher', active: false },
-  { from: 'frontend', to: 'reviewer', active: true },
-  { from: 'backend', to: 'reviewer', active: false },
-  { from: 'reviewer', to: 'deploy', active: true },
-]
-
-export interface GanttRow {
-  agent: string
-  color: string
-  bars: { start: number; end: number; label: string; status: AgentStatus }[]
+export function demoDispatches(): DispatchEdge[] {
+  return [
+    { from_agent: 'orchestrator-01', to_agent: 'coder-frontend', task_id: 'T-2042', ts: agoIso(33 * 60_000) },
+    { from_agent: 'orchestrator-01', to_agent: 'coder-backend', task_id: 'T-2043', ts: agoIso(27 * 60_000) },
+    { from_agent: 'orchestrator-01', to_agent: 'researcher-01', task_id: 'T-2045', ts: agoIso(12 * 60_000) },
+    { from_agent: 'coder-frontend', to_agent: 'reviewer-01', task_id: 'T-2044', ts: agoIso(18 * 60_000) },
+    { from_agent: 'coder-backend', to_agent: 'reviewer-01', task_id: 'T-2043', ts: agoIso(20 * 60_000) },
+    { from_agent: 'orchestrator-01', to_agent: 'doc-writer', task_id: 'T-2039', ts: agoIso(65 * 60_000) },
+  ]
 }
 
-export const GANTT: GanttRow[] = [
-  { agent: 'orchestrator-01', color: '#22d3ee', bars: [{ start: 2, end: 46, label: 'T-2041 编排派发', status: 'running' }] },
-  { agent: 'coder-frontend', color: '#e879f9', bars: [{ start: 9, end: 40, label: 'T-2042 组件重构', status: 'running' }] },
-  { agent: 'coder-backend', color: '#34d399', bars: [
-    { start: 9, end: 33, label: 'T-2043 迁移脚本', status: 'waiting' },
-  ] },
-  { agent: 'reviewer-01', color: '#fbbf24', bars: [
-    { start: 18, end: 44, label: 'T-2044 PR #142', status: 'running' },
-  ] },
-  { agent: 'researcher-01', color: '#f87171', bars: [
-    { start: 14, end: 21, label: 'T-2045 竞品抓取', status: 'blocked' },
-  ] },
-  { agent: 'doc-writer', color: '#8fa1c2', bars: [
-    { start: 0, end: 12, label: 'T-2039 发布说明', status: 'done' },
-  ] },
-]
-
-export interface FeedMsg {
-  id: number
-  time: string
-  from: string
-  to: string
-  text: string
-  kind: 'dispatch' | 'report' | 'hitl' | 'system'
+export function demoMessages(): FeedMessage[] {
+  return [
+    { ts: agoIso(22 * 60_000), from: 'orchestrator-01', to: 'coder-frontend', kind: '派发', text: '派发 T-2042：配额面板改为 WebSocket 实时推送，注意断线重连' },
+    { ts: agoIso(18 * 60_000), from: 'coder-backend', to: 'orchestrator-01', kind: '审批', text: '迁移脚本包含 DROP COLUMN，申请人工审批后继续' },
+    { ts: agoIso(17 * 60_000), from: 'orchestrator-01', to: '操作员', kind: '审批', text: 'T-2043 已挂起，等待你的确认（高危操作）' },
+    { ts: agoIso(9 * 60_000), from: 'reviewer-01', to: 'coder-frontend', kind: '回报', text: 'PR #142 发现 2 处边界问题：配额为 0 时预测值溢出' },
+    { ts: agoIso(6 * 60_000), from: 'researcher-01', to: 'system', kind: '系统', text: '上游接口返回 429，进入指数退避，预计 4 分钟后重试' },
+    { ts: agoIso(3 * 60_000), from: 'coder-frontend', to: 'reviewer-01', kind: '回报', text: '已修复溢出并推送 commit 9f3ac21，请复审' },
+    { ts: agoIso(2 * 60_000), from: 'doc-writer', to: 'orchestrator-01', kind: '回报', text: 'T-2039 完成，产物：release-notes-v2.4.md' },
+  ]
 }
 
-export const INITIAL_FEED: FeedMsg[] = [
-  { id: 1, time: '14:02:11', from: 'orchestrator-01', to: 'coder-frontend', text: '派发 T-2042：配额面板改为 WebSocket 实时推送，注意断线重连', kind: 'dispatch' },
-  { id: 2, time: '14:06:38', from: 'coder-backend', to: 'orchestrator-01', text: '迁移脚本包含 DROP COLUMN，申请人工审批后继续', kind: 'hitl' },
-  { id: 3, time: '14:09:54', from: 'orchestrator-01', to: '白菜', text: 'T-2043 已挂起，等待你的确认（高危操作）', kind: 'hitl' },
-  { id: 4, time: '14:15:20', from: 'reviewer-01', to: 'coder-frontend', text: 'PR #142 发现 2 处边界问题：配额为 0 时预测值溢出', kind: 'report' },
-  { id: 5, time: '14:18:03', from: 'researcher-01', to: 'system', text: 'Gemini API 返回 429，进入指数退避，预计 4 分钟后重试', kind: 'system' },
-  { id: 6, time: '14:21:47', from: 'coder-frontend', to: 'reviewer-01', text: '已修复溢出并推送 commit 9f3ac21，请复审', kind: 'report' },
-  { id: 7, time: '14:24:12', from: 'doc-writer', to: 'orchestrator-01', text: 'T-2039 完成，产物：release-notes-v2.4.md', kind: 'report' },
-]
+/** 演示模式派生告警（口径对齐后端规则引擎 §FR-6）。 */
+export function deriveDemoAlerts(accounts: AccountState[], agents: AgentState[], now: number): Alert[] {
+  const alerts: Alert[] = []
+  for (const acc of accounts) {
+    for (const w of acc.windows) {
+      if (w.remaining_pct <= 15) {
+        alerts.push({
+          key: `quota:${acc.id}:${w.label}`, level: 'CRIT', title: '配额告急',
+          message: `${acc.name} ${w.label} 剩余 ${w.remaining_pct}%（≤15%），建议停止向该账号派单`,
+          ts: nowIsoLocal(), ephemeral: false,
+        })
+      } else if (w.remaining_pct <= 40) {
+        alerts.push({
+          key: `quota:${acc.id}:${w.label}`, level: 'WARN', title: '配额偏低',
+          message: `${acc.name} ${w.label} 剩余 ${w.remaining_pct}%（≤40%）`,
+          ts: nowIsoLocal(), ephemeral: false,
+        })
+      }
+      if (w.resets_at) {
+        const msLeft = new Date(w.resets_at).getTime() - now
+        if (msLeft > 0 && msLeft < 30 * 60_000) {
+          alerts.push({
+            key: `reset:${acc.id}:${w.label}`, level: 'INFO', title: '配额即将重置',
+            message: `${acc.name} ${w.label} 将在 ${Math.ceil(msLeft / 60_000)} 分钟后重置`,
+            ts: nowIsoLocal(), ephemeral: false,
+          })
+        }
+      }
+    }
+  }
+  for (const a of agents) {
+    if (a.status === 'blocked' && a.blocked_since) {
+      const ms = now - new Date(a.blocked_since).getTime()
+      if (ms >= 10 * 60_000) {
+        alerts.push({
+          key: `blocked:${a.id}`, level: 'WARN', title: 'agent 阻塞超时',
+          message: `${a.name} 已阻塞 ${Math.floor(ms / 60_000)} 分钟：${a.blocked_reason ?? '原因未知'}`,
+          ts: nowIsoLocal(), ephemeral: false,
+        })
+      }
+    }
+    if (a.status === 'waiting') {
+      alerts.push({
+        key: `waiting:${a.id}`, level: 'WARN', title: '等待审批',
+        message: `agent ${a.name} 进入 waiting，等待人工审批`,
+        ts: nowIsoLocal(), ephemeral: false,
+      })
+    }
+    if (a.status === 'done' && a.current_task_id === null) {
+      alerts.push({
+        key: `done:${a.id}`, level: 'OK', title: '任务完成',
+        message: `${a.name} 已完成最近任务`,
+        ts: nowIsoLocal(), ephemeral: true,
+      })
+    }
+  }
+  return alerts
+}
 
-export const TICKER_ITEMS = [
-  { level: 'critical', text: 'Codex 账号 5h 窗口配额仅剩 12%，按当前速率约 49 分钟后耗尽' },
-  { level: 'warn', text: 'researcher-01 已阻塞 12 分钟：Gemini API 速率受限' },
-  { level: 'warn', text: 'coder-backend 等待人工审批：数据库迁移含高危操作' },
-  { level: 'ok', text: 'doc-writer 完成 T-2039，耗时 65 分钟，成本 ¥0.67' },
-  { level: 'ok', text: 'reviewer-01 完成 PR #141 审查，通过' },
-  { level: 'info', text: 'Claude Code 5h 窗口将于 2 小时 14 分钟后重置' },
+/** 演示模式通信流追加语料（循环播放）。 */
+export const DEMO_FEED_LINES: Omit<FeedMessage, 'ts'>[] = [
+  { from: 'coder-frontend', to: 'orchestrator-01', kind: '回报', text: 'T-2042：配额卡片已拆分为窗口型 / 余额型两种形态' },
+  { from: 'orchestrator-01', to: 'coder-backend', kind: '派发', text: '催促：T-2043 审批通过后请在 10 分钟内完成迁移' },
+  { from: 'reviewer-01', to: 'orchestrator-01', kind: '回报', text: 'PR #142 复审中，预计 3 分钟出结果' },
+  { from: 'researcher-01', to: 'system', kind: '系统', text: '第 3 次重试仍返回 429，退避窗口升至 8 分钟' },
+  { from: 'orchestrator-01', to: 'doc-writer', kind: '派发', text: '预派发 T-2046：待发布后更新用户手册配额章节' },
 ]

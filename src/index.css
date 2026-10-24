@@ -153,6 +153,16 @@ body {
   to { stroke-dashoffset: -24; }
 }
 
+/* commander drawer */
+.cmdr-drawer {
+  animation: drawer-in 0.22s ease-out;
+  box-shadow: -12px 0 32px rgba(0, 0, 0, 0.45);
+}
+@keyframes drawer-in {
+  from { transform: translateX(24px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
 /* thin themed scrollbar */
 *::-webkit-scrollbar {
   width: 6px;
@@ -196,7 +206,8 @@ a:focus-visible {
   .ticker-track,
   .flow-line,
   .flow-line-slow,
-  .led-pulse::after {
+  .led-pulse::after,
+  .cmdr-drawer {
     animation: none !important;
   }
   .qbar > div {
